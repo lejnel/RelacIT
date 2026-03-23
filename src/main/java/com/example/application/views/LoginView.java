@@ -75,9 +75,15 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
     @Override
     public void beforeEnter(BeforeEnterEvent event) {
         // If no admin exists, redirect to setup
-        if (!adminManager.isAdminCreated()) {
+        boolean adminExists = adminManager.isAdminCreated();
+        System.out.println("LoginView.beforeEnter - adminExists: " + adminExists);
+        
+        if (!adminExists) {
+            System.out.println("Redirecting to setup because no admin exists");
             event.forwardTo(SetupView.class);
+            return;
         }
+        
         // If already logged in, go to dashboard
         if (VaadinSession.getCurrent().getAttribute("user") != null) {
             event.forwardTo("");

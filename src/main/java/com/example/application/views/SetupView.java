@@ -107,7 +107,10 @@ public class SetupView extends VerticalLayout implements BeforeEnterObserver {
     @Override
     public void beforeEnter(BeforeEnterEvent event) {
         // If admin already exists, redirect to login
-        if (adminManager.isAdminCreated()) {
+        boolean adminExists = adminManager.isAdminCreated();
+        System.out.println("SetupView.beforeEnter - adminExists: " + adminExists);
+        if (adminExists) {
+            System.out.println("Redirecting to login because admin exists");
             event.forwardTo(LoginView.class);
         }
     }
