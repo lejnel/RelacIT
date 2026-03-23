@@ -29,7 +29,6 @@ import com.vaadin.flow.data.renderer.ComponentRenderer;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.BeforeEnterEvent;
 import com.vaadin.flow.router.BeforeEnterObserver;
-import com.vaadin.flow.server.PWA;
 import com.vaadin.flow.server.VaadinSession;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -43,7 +42,6 @@ import java.util.concurrent.TimeUnit;
  * Requires login to access.
  */
 @Route("")
-@PWA(name = "RelacIT Dashboard", shortName = "RelacIT")
 public class DashboardView extends VerticalLayout implements BeforeEnterObserver {
 
     private final ModbusConnectionService modbusService;
