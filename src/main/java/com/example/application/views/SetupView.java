@@ -5,30 +5,28 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.html.H1;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.PasswordField;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.VaadinSession;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * First-time setup page for creating admin account.
- * Shown only when no admin account exists.
  */
 @Route("setup")
-public class SetupView extends VerticalLayout {
+public class SetupView extends VerticalLayout implements BeforeEnterObserver {
+
+    private final AdminAccountManager adminManager;
 
     @Autowired
     public SetupView(AdminAccountManager adminManager) {
-        // If admin already exists, redirect to login
-        if (adminManager.isAdminCreated()) {
-            UI.getCurrent().navigate(LoginView.class);
-            return;
-        }
+        this.adminManager = adminManager;
 
         setSizeFull();
         setAlignItems(Alignment.CENTER);
@@ -40,7 +38,6 @@ public class SetupView extends VerticalLayout {
         Paragraph subtitle = new Paragraph("Create your admin account to get started");
         subtitle.getStyle().set("color", "#64748b").set("margin-bottom", "2rem");
 
-        // Warning message
         Paragraph warning = new Paragraph("⚠️ IMPORTANT: This password cannot be recovered!");
         warning.getStyle()
             .set("color", "#dc2626")
@@ -51,7 +48,7 @@ public class SetupView extends VerticalLayout {
             .set("margin-bottom", "1rem");
 
         Paragraph info = new Paragraph(
-            "If you forget your password, you'll need to reinstall and reconfigure. " +
+            "If you forget your password, you'll need to reinstall. " +
             "Export your configuration regularly for backup."
         );
         info.getStyle().set("color", "#64748b").set("font-size", "0.875rem").set("margin-bottom", "2rem");
@@ -78,17 +75,14 @@ public class SetupView extends VerticalLayout {
             String password = passwordField.getValue();
             String confirm = confirmPasswordField.getValue();
 
-            // Validation
             if (username == null || username.trim().length() < 3) {
                 Notification.show("Username must be at least 3 characters", 3000, Notification.Position.MIDDLE);
                 return;
             }
-
             if (password == null || password.length() < 8) {
                 Notification.show("Password must be at least 8 characters", 3000, Notification.Position.MIDDLE);
                 return;
             }
-
             if (!password.equals(confirm)) {
                 Notification.show("Passwords do not match", 3000, Notification.Position.MIDDLE);
                 return;
@@ -96,9 +90,8 @@ public class SetupView extends VerticalLayout {
 
             try {
                 adminManager.createAdminAccount(username, password);
-                // Auto-login after setup
                 VaadinSession.getCurrent().setAttribute("user", username);
-                Notification.show("Admin account created! Redirecting...", 3000, Notification.Position.MIDDLE);
+                Notification.show("Account created! Redirecting...", 3000, Notification.Position.MIDDLE);
                 UI.getCurrent().navigate("");
             } catch (Exception ex) {
                 Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.MIDDLE);
@@ -109,5 +102,13 @@ public class SetupView extends VerticalLayout {
         createButton.getStyle().set("margin-top", "1rem");
 
         add(title, subtitle, warning, info, usernameField, passwordField, confirmPasswordField, createButton);
+    }
+
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        // If admin already exists, redirect to login
+        if (adminManager.isAdminCreated()) {
+            event.forwardTo(LoginView.class);
+        }
     }
 }
