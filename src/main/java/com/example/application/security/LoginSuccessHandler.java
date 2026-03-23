@@ -1,20 +1,18 @@
 package com.example.application.security;
 
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import com.vaadin.flow.server.VaadinSession;
+import com.vaadin.flow.component.UI;
 
-import java.io.IOException;
-
+/**
+ * Handles successful login by redirecting to dashboard.
+ * Simplified - no Spring Security dependencies.
+ */
 @Component
-public class LoginSuccessHandler implements AuthenticationSuccessHandler {
+public class LoginSuccessHandler {
 
-    @Override
-    public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
-            Authentication authentication) throws IOException, ServletException {
-        response.sendRedirect("/");
+    public void onLoginSuccess(String username) {
+        VaadinSession.getCurrent().setAttribute("user", username);
+        UI.getCurrent().navigate("");
     }
 }

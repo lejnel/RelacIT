@@ -1,17 +1,17 @@
 package com.example.application.security;
 
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.nio.file.*;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Properties;
-import java.util.UUID;
 
 /**
  * Manages the admin account for local installation.
- * Admin credentials are stored in a local file.
+ * Simple password hashing using SHA-256 with salt.
+ * No external dependencies required.
  */
 @Component
 public class AdminAccountManager {
@@ -19,8 +19,6 @@ public class AdminAccountManager {
     private static final String CONFIG_DIR = System.getProperty("user.home", ".") + "/.relacit";
     private static final String ADMIN_FILE = CONFIG_DIR + "/admin.properties";
     private static final String SALT_FILE = CONFIG_DIR + "/salt.properties";
-
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private String username;
     private String passwordHash;
@@ -31,19 +29,13 @@ public class AdminAccountManager {
         loadAdminConfig();
     }
 
-    /**
-     * Check if admin account exists.
-     */
     public boolean isAdminCreated() {
         return initialized && username != null && passwordHash != null;
     }
 
-    /**
-     * Create admin account (only allowed if none exists).
-     */
     public synchronized boolean createAdminAccount(String username, String password) {
         if (isAdminCreated()) {
-            throw new IllegalStateException("Admin account already exists. Cannot create another.");
+            throw new IllegalStateException("Admin account already exists.");
         }
 
         if (username == null || username.trim().isEmpty()) {
@@ -54,44 +46,31 @@ public class AdminAccountManager {
             throw new IllegalArgumentException("Password must be at least 8 characters");
         }
 
-        // Generate salt
-        this.salt = UUID.randomUUID().toString();
+        this.salt = generateSalt();
         this.username = username.trim();
-        this.passwordHash = passwordEncoder.encode(password + salt);
+        this.passwordHash = hashPassword(password, salt);
 
-        // Save to file
         saveAdminConfig();
-
         this.initialized = true;
         System.out.println("Admin account created: " + username);
         return true;
     }
 
-    /**
-     * Validate login credentials.
-     */
     public boolean validateLogin(String username, String password) {
         if (!isAdminCreated()) {
             return false;
         }
-
         if (!this.username.equals(username)) {
             return false;
         }
-
-        return passwordEncoder.matches(password + salt, passwordHash);
+        String testHash = hashPassword(password, salt);
+        return testHash.equals(passwordHash);
     }
 
-    /**
-     * Get admin username.
-     */
     public String getUsername() {
         return username;
     }
 
-    /**
-     * Export configuration (for backup).
-     */
     public String exportConfig() {
         if (!isAdminCreated()) {
             throw new IllegalStateException("No admin account to export");
@@ -113,9 +92,6 @@ public class AdminAccountManager {
         }
     }
 
-    /**
-     * Import configuration (for restore).
-     */
     public void importConfig(String configData) throws IOException {
         Properties props = new Properties();
         props.load(new StringReader(configData));
@@ -128,7 +104,6 @@ public class AdminAccountManager {
             throw new IOException("Invalid configuration file - missing required fields");
         }
 
-        // Overwrite existing
         this.username = importedUsername;
         this.passwordHash = importedPasswordHash;
         this.salt = importedSalt;
@@ -138,9 +113,6 @@ public class AdminAccountManager {
         System.out.println("Admin configuration imported: " + username);
     }
 
-    /**
-     * Get config file location (for user information).
-     */
     public static String getConfigLocation() {
         return ADMIN_FILE;
     }
@@ -194,7 +166,6 @@ public class AdminAccountManager {
                 saltProps.store(os, "RelacIT Salt - DO NOT SHARE");
             }
 
-            // Set file permissions (readable only by owner)
             Paths.get(ADMIN_FILE).toFile().setReadable(false, false);
             Paths.get(ADMIN_FILE).toFile().setReadable(true, true);
             Paths.get(SALT_FILE).toFile().setReadable(false, false);
@@ -202,6 +173,24 @@ public class AdminAccountManager {
 
         } catch (IOException e) {
             throw new RuntimeException("Failed to save admin config: " + e.getMessage(), e);
+        }
+    }
+
+    private String generateSalt() {
+        SecureRandom random = new SecureRandom();
+        byte[] salt = new byte[16];
+        random.nextBytes(salt);
+        return Base64.getEncoder().encodeToString(salt);
+    }
+
+    private String hashPassword(String password, String salt) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            md.update(salt.getBytes());
+            byte[] hashed = md.digest(password.getBytes());
+            return Base64.getEncoder().encodeToString(hashed);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
         }
     }
 }
