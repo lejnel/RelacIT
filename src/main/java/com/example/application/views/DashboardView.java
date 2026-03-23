@@ -6,6 +6,7 @@ import com.example.application.datalog.*;
 import com.example.application.s7.*;
 import com.example.application.security.AdminAccountManager;
 import com.vaadin.flow.component.AttachEvent;
+import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -100,7 +101,7 @@ public class DashboardView extends VerticalLayout implements BeforeEnterObserver
     }
 
     @Override
-    protected void onDetach() {
+    protected void onDetach(DetachEvent detachEvent) {
         scheduler.shutdown();
     }
 
