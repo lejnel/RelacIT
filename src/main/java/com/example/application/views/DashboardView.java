@@ -4,14 +4,17 @@ import com.example.application.ModbusConnectionService;
 import com.example.application.ModbusUnit;
 import com.example.application.datalog.*;
 import com.example.application.s7.*;
+import com.example.application.security.AdminAccountManager;
 import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
@@ -19,10 +22,14 @@ import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
+import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.renderer.ComponentRenderer;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.server.PWA;
+import com.vaadin.flow.server.VaadinSession;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Instant;
@@ -36,17 +43,18 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Main Dashboard for RelacIT.
- * Simple data visualization and source management.
+ * Requires login to access.
  */
 @Route("")
 @PWA(name = "RelacIT Dashboard", shortName = "RelacIT")
-public class DashboardView extends VerticalLayout {
+public class DashboardView extends VerticalLayout implements BeforeEnterObserver {
 
     private final ModbusConnectionService modbusService;
     private final S7ConnectionService s7Service;
     private final PlcPollingService modbusPolling;
     private final S7PollingService s7Polling;
     private final List<DataLogger> loggers;
+    private final AdminAccountManager adminManager;
     
     private final Grid<ModbusUnit> modbusGrid = new Grid<>();
     private final Grid<S7Unit> s7Grid = new Grid<>();
@@ -62,22 +70,30 @@ public class DashboardView extends VerticalLayout {
             S7ConnectionService s7Service,
             PlcPollingService modbusPolling,
             S7PollingService s7Polling,
-            List<DataLogger> loggers) {
+            List<DataLogger> loggers,
+            AdminAccountManager adminManager) {
         this.modbusService = modbusService;
         this.s7Service = s7Service;
         this.modbusPolling = modbusPolling;
         this.s7Polling = s7Polling;
         this.loggers = loggers;
+        this.adminManager = adminManager;
+    }
 
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        // Check if user is logged in
+        if (VaadinSession.getCurrent().getAttribute("user") == null) {
+            event.forwardTo(LoginView.class);
+        }
+    }
+
+    private void createLayout() {
         setSizeFull();
         setPadding(true);
         setSpacing(true);
 
-        createLayout();
-    }
-
-    private void createLayout() {
-        // Header
+        // Header with logout button
         H1 title = new H1("RelacIT - Industrial Gateway");
         title.getStyle()
             .set("font-size", "24px")
@@ -89,7 +105,29 @@ public class DashboardView extends VerticalLayout {
             .set("color", "#16a34a")
             .set("font-weight", "bold");
 
-        HorizontalLayout header = new HorizontalLayout(title, statusLabel);
+        // User info and logout
+        String username = (String) VaadinSession.getCurrent().getAttribute("user");
+        Span userLabel = new Span("👤 " + username);
+        userLabel.getStyle().set("color", "#64748b");
+
+        Button exportBtn = new Button(new Icon(VaadinIcon.DOWNLOAD), e -> showExportDialog());
+        exportBtn.getElement().setAttribute("title", "Export Configuration");
+        
+        Button importBtn = new Button(new Icon(VaadinIcon.UPLOAD), e -> showImportDialog());
+        importBtn.getElement().setAttribute("title", "Import Configuration");
+
+        Button logoutBtn = new Button("Logout", e -> {
+            VaadinSession.getCurrent().close();
+            UI.getCurrent().navigate(LoginView.class);
+        });
+        logoutBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        logoutBtn.getStyle().set("color", "#dc2626");
+
+        HorizontalLayout userActions = new HorizontalLayout(userLabel, exportBtn, importBtn, logoutBtn);
+        userActions.setAlignItems(Alignment.CENTER);
+        userActions.setSpacing(true);
+
+        HorizontalLayout header = new HorizontalLayout(title, statusLabel, userActions);
         header.setAlignItems(Alignment.CENTER);
         header.setJustifyContentMode(JustifyContentMode.BETWEEN);
         header.setWidthFull();
@@ -98,10 +136,47 @@ public class DashboardView extends VerticalLayout {
         H2 sourcesTitle = new H2("Data Sources");
         sourcesTitle.getStyle().set("font-size", "18px").set("margin-top", "20px");
 
-        // Modbus Grid
-        H2 modbusTitle = new H2("Modbus TCP");
-        modbusTitle.getStyle().set("font-size", "16px").set("color", "#475569");
+        setupModbusGrid();
+        setupS7Grid();
 
+        Button addModbusBtn = new Button("+ Add Modbus Device", e -> showAddModbusDialog());
+        addModbusBtn.setIcon(new Icon(VaadinIcon.PLUS));
+        addModbusBtn.getStyle().set("background", "#2563eb").set("color", "white");
+
+        Button addS7Btn = new Button("+ Add S7 Device", e -> showAddS7Dialog());
+        addS7Btn.setIcon(new Icon(VaadinIcon.PLUS));
+        addS7Btn.getStyle().set("background", "#2563eb").set("color", "white");
+
+        // Loggers
+        H2 loggersTitle = new H2("Data Loggers");
+        loggersTitle.getStyle().set("font-size", "16px").set("color", "#475569").set("margin-top", "20px");
+
+        VerticalLayout loggersInfo = new VerticalLayout();
+        loggersInfo.setSpacing(false);
+        loggersInfo.setPadding(false);
+
+        for (DataLogger logger : loggers) {
+            String loggerName = logger.getClass().getSimpleName();
+            String status = logger.getStatus().name();
+            Span loggerLabel = new Span("● " + loggerName + ": " + status);
+            loggerLabel.getStyle().set("color", 
+                logger.getStatus() == DataLogger.LoggerStatus.LOGGING ? "#16a34a" : 
+                logger.getStatus() == DataLogger.LoggerStatus.READY ? "#f59e0b" : "#94a3b8");
+            loggersInfo.add(loggerLabel);
+        }
+
+        dataStatsLabel.getStyle().set("font-family", "monospace").set("color", "#64748b");
+
+        // Assemble
+        add(header, sourcesTitle, modbusGrid, addModbusBtn,
+            s7Grid, addS7Btn, loggersTitle, loggersInfo, dataStatsLabel);
+
+        refreshModbusGrid();
+        refreshS7Grid();
+    }
+
+    private void setupModbusGrid() {
+        modbusGrid.removeAllColumns();
         modbusGrid.addColumn(ModbusUnit::getDisplayName)
             .setHeader("Name")
             .setSortable(true);
@@ -129,15 +204,10 @@ public class DashboardView extends VerticalLayout {
 
         modbusGrid.setWidthFull();
         modbusGrid.setHeight("200px");
+    }
 
-        Button addModbusBtn = new Button("+ Add Modbus Device", e -> showAddModbusDialog());
-        addModbusBtn.setIcon(new Icon(VaadinIcon.PLUS));
-        addModbusBtn.getStyle().set("background", "#2563eb").set("color", "white");
-
-        // S7 Grid
-        H2 s7Title = new H2("Siemens S7");
-        s7Title.getStyle().set("font-size", "16px").set("color", "#475569").set("margin-top", "20px");
-
+    private void setupS7Grid() {
+        s7Grid.removeAllColumns();
         s7Grid.addColumn(S7Unit::getDisplayName)
             .setHeader("Name")
             .setSortable(true);
@@ -165,43 +235,94 @@ public class DashboardView extends VerticalLayout {
 
         s7Grid.setWidthFull();
         s7Grid.setHeight("200px");
+    }
 
-        Button addS7Btn = new Button("+ Add S7 Device", e -> showAddS7Dialog());
-        addS7Btn.setIcon(new Icon(VaadinIcon.PLUS));
-        addS7Btn.getStyle().set("background", "#2563eb").set("color", "white");
+    private void showExportDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("📤 Export Configuration");
+        dialog.setWidth("500px");
 
-        // Logger Status
-        H2 loggersTitle = new H2("Data Loggers");
-        loggersTitle.getStyle().set("font-size", "16px").set("color", "#475569").set("margin-top", "20px");
+        Paragraph info = new Paragraph("Copy this configuration to backup your admin account. " +
+            "Store it safely - you can use it to restore access after reinstalling.");
+        info.getStyle().set("color", "#64748b");
 
-        VerticalLayout loggersInfo = new VerticalLayout();
-        loggersInfo.setSpacing(false);
-        loggersInfo.setPadding(false);
+        try {
+            String config = adminManager.exportConfig();
+            TextArea configArea = new TextArea("Configuration");
+            configArea.setValue(config);
+            configArea.setWidthFull();
+            configArea.setHeight("200px");
+            configArea.setReadOnly(true);
 
-        for (DataLogger logger : loggers) {
-            String loggerName = logger.getClass().getSimpleName();
-            String status = logger.getStatus().name();
-            Span loggerLabel = new Span("● " + loggerName + ": " + status);
-            loggerLabel.getStyle().set("color", 
-                logger.getStatus() == DataLogger.LoggerStatus.LOGGING ? "#16a34a" : 
-                logger.getStatus() == DataLogger.LoggerStatus.READY ? "#f59e0b" : "#94a3b8");
-            loggersInfo.add(loggerLabel);
+            Button copyBtn = new Button("Copy to Clipboard", e -> {
+                UI.getCurrent().getPage().executeJs("navigator.clipboard.writeText($0)", config);
+                Notification.show("Copied to clipboard!");
+            });
+
+            Button closeBtn = new Button("Close", e -> dialog.close());
+
+            dialog.add(new VerticalLayout(info, configArea, new HorizontalLayout(copyBtn, closeBtn)));
+        } catch (Exception e) {
+            dialog.add(new Paragraph("Error: " + e.getMessage()));
         }
 
-        if (loggers.isEmpty()) {
-            loggersInfo.add(new Span("No loggers configured"));
-        }
+        dialog.open();
+    }
 
-        // Stats
-        dataStatsLabel.getStyle().set("font-family", "monospace").set("color", "#64748b");
+    private void showImportDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("📥 Import Configuration");
+        dialog.setWidth("500px");
 
-        // Assemble
-        add(header, sourcesTitle, modbusTitle, modbusGrid, addModbusBtn,
-            s7Title, s7Grid, addS7Btn, loggersTitle, loggersInfo, dataStatsLabel);
+        Paragraph warning = new Paragraph("⚠️ This will OVERWRITE the current admin account!");
+        warning.getStyle().set("color", "#dc2626");
 
-        // Initial data
-        refreshModbusGrid();
-        refreshS7Grid();
+        TextArea configArea = new TextArea("Paste Configuration");
+        configArea.setWidthFull();
+        configArea.setHeight("200px");
+        configArea.setPlaceholder("Paste your backup configuration here...");
+
+        Button importBtn = new Button("Import", e -> {
+            try {
+                adminManager.importConfig(configArea.getValue());
+                Notification.show("Configuration imported! Please login again.");
+                VaadinSession.getCurrent().close();
+                UI.getCurrent().navigate(LoginView.class);
+                dialog.close();
+            } catch (Exception ex) {
+                Notification.show("Import failed: " + ex.getMessage(), 5000, Notification.Position.MIDDLE);
+            }
+        });
+        importBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        Button cancelBtn = new Button("Cancel", e -> dialog.close());
+
+        dialog.add(new VerticalLayout(warning, configArea, new HorizontalLayout(importBtn, cancelBtn)));
+        dialog.open();
+    }
+
+    // ... existing methods (toggleModbusConnection, toggleS7Connection, showAddModbusDialog, etc.) ...
+    // These would be the same as before, just add @Override to onAttach
+
+    @Override
+    protected void onAttach(AttachEvent attachEvent) {
+        ui = attachEvent.getUI();
+        createLayout();
+        
+        scheduler.scheduleAtFixedRate(() -> {
+            if (ui != null && !ui.isClosing()) {
+                ui.access(() -> {
+                    refreshModbusGrid();
+                    refreshS7Grid();
+                    updateStats();
+                });
+            }
+        }, 2, 2, TimeUnit.SECONDS);
+    }
+
+    @Override
+    protected void onDetach() {
+        scheduler.shutdown();
     }
 
     private void toggleModbusConnection(ModbusUnit unit) {
@@ -413,26 +534,5 @@ public class DashboardView extends VerticalLayout {
         sb.append("Modbus Polling: ").append(modbusPolling.getPollingStatus()).append(" | ");
         sb.append("S7 Polling: ").append(s7Polling.getPollingStatus());
         dataStatsLabel.setText(sb.toString());
-    }
-
-    @Override
-    protected void onAttach(AttachEvent attachEvent) {
-        ui = attachEvent.getUI();
-        
-        // Auto-refresh every 2 seconds
-        scheduler.scheduleAtFixedRate(() -> {
-            if (ui != null && !ui.isClosing()) {
-                ui.access(() -> {
-                    refreshModbusGrid();
-                    refreshS7Grid();
-                    updateStats();
-                });
-            }
-        }, 2, 2, TimeUnit.SECONDS);
-    }
-
-    @Override
-    protected void onDetach() {
-        scheduler.shutdown();
     }
 }
