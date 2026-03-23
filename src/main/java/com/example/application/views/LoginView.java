@@ -24,15 +24,17 @@ public class LoginView extends VerticalLayout {
 
     @Autowired
     public LoginView(AdminAccountManager adminManager) {
-        // If no admin, redirect to setup
-        if (!adminManager.isAdminCreated()) {
-            UI.getCurrent().navigate(SetupView.class);
-            return;
-        }
-
         setSizeFull();
         setAlignItems(Alignment.CENTER);
         setJustifyContentMode(JustifyContentMode.CENTER);
+
+        // If no admin, redirect to setup (deferred to avoid UI issues)
+        if (!adminManager.isAdminCreated()) {
+            UI.getCurrent().accessLater(() -> {
+                UI.getCurrent().navigate(SetupView.class);
+            }, null);
+            return;
+        }
 
         H1 title = new H1("🏭 RelacIT");
         title.getStyle().set("margin-bottom", "0");
