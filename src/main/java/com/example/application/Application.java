@@ -15,9 +15,7 @@ public class Application {
 
     @Bean
     public LocalFileLogger localFileLogger() {
-        LocalFileLogger logger = new LocalFileLogger();
-        logger.start();
-        return logger;
+        return new LocalFileLogger(); // @PostConstruct handles start
     }
 
     @Bean
