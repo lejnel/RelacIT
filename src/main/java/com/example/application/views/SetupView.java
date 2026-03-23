@@ -96,8 +96,10 @@ public class SetupView extends VerticalLayout {
 
             try {
                 adminManager.createAdminAccount(username, password);
-                Notification.show("Admin account created! Please log in.", 3000, Notification.Position.MIDDLE);
-                UI.getCurrent().navigate(LoginView.class);
+                // Auto-login after setup
+                VaadinSession.getCurrent().setAttribute("user", username);
+                Notification.show("Admin account created! Redirecting...", 3000, Notification.Position.MIDDLE);
+                UI.getCurrent().navigate("");
             } catch (Exception ex) {
                 Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.MIDDLE);
             }
