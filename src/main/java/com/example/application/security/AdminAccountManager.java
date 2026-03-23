@@ -1,0 +1,202 @@
+package com.example.application.security;
+
+import org.springframework.stereotype.Component;
+
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.*;
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.util.Properties;
+
+/**
+ * Manages the admin account for local installation.
+ * Simple password hashing using SHA-256 with salt.
+ * No external dependencies required.
+ */
+@Component
+public class AdminAccountManager {
+
+    private static final String CONFIG_DIR = System.getProperty("user.home", ".") + "/.relacit";
+    private static final String ADMIN_FILE = CONFIG_DIR + "/admin.properties";
+    private static final String SALT_FILE = CONFIG_DIR + "/salt.properties";
+
+    private String username;
+    private String passwordHash;
+    private String salt;
+    private boolean initialized = false;
+
+    public AdminAccountManager() {
+        System.out.println("AdminAccountManager initializing...");
+        System.out.println("Config dir: " + CONFIG_DIR);
+        System.out.println("Admin file: " + ADMIN_FILE);
+        System.out.println("Admin exists: " + Files.exists(Paths.get(ADMIN_FILE)));
+        loadAdminConfig();
+        System.out.println("Initialized: " + initialized);
+    }
+
+    public boolean isAdminCreated() {
+        return initialized && username != null && passwordHash != null;
+    }
+
+    public synchronized boolean createAdminAccount(String username, String password) {
+        if (isAdminCreated()) {
+            throw new IllegalStateException("Admin account already exists.");
+        }
+
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("Username cannot be empty");
+        }
+
+        if (password == null || password.length() < 8) {
+            throw new IllegalArgumentException("Password must be at least 8 characters");
+        }
+
+        this.salt = generateSalt();
+        this.username = username.trim();
+        this.passwordHash = hashPassword(password, salt);
+
+        saveAdminConfig();
+        this.initialized = true;
+        System.out.println("Admin account created: " + username);
+        return true;
+    }
+
+    public boolean validateLogin(String username, String password) {
+        if (!isAdminCreated()) {
+            return false;
+        }
+        if (!this.username.equals(username)) {
+            return false;
+        }
+        String testHash = hashPassword(password, salt);
+        return testHash.equals(passwordHash);
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public String exportConfig() {
+        if (!isAdminCreated()) {
+            throw new IllegalStateException("No admin account to export");
+        }
+
+        Properties props = new Properties();
+        props.setProperty("username", username);
+        props.setProperty("passwordHash", passwordHash);
+        props.setProperty("salt", salt);
+        props.setProperty("version", "1.0");
+        props.setProperty("exportDate", java.time.Instant.now().toString());
+
+        try {
+            StringWriter writer = new StringWriter();
+            props.store(writer, "RelacIT Admin Configuration Backup");
+            return writer.toString();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to export config: " + e.getMessage(), e);
+        }
+    }
+
+    public void importConfig(String configData) throws IOException {
+        Properties props = new Properties();
+        props.load(new StringReader(configData));
+
+        String importedUsername = props.getProperty("username");
+        String importedPasswordHash = props.getProperty("passwordHash");
+        String importedSalt = props.getProperty("salt");
+
+        if (importedUsername == null || importedPasswordHash == null || importedSalt == null) {
+            throw new IOException("Invalid configuration file - missing required fields");
+        }
+
+        this.username = importedUsername;
+        this.passwordHash = importedPasswordHash;
+        this.salt = importedSalt;
+        this.initialized = true;
+
+        saveAdminConfig();
+        System.out.println("Admin configuration imported: " + username);
+    }
+
+    public static String getConfigLocation() {
+        return ADMIN_FILE;
+    }
+
+    private void loadAdminConfig() {
+        try {
+            Path adminPath = Paths.get(ADMIN_FILE);
+            Path saltPath = Paths.get(SALT_FILE);
+
+            if (Files.exists(adminPath) && Files.exists(saltPath)) {
+                Properties props = new Properties();
+                try (InputStream is = Files.newInputStream(adminPath)) {
+                    props.load(is);
+                    this.username = props.getProperty("username");
+                    this.passwordHash = props.getProperty("passwordHash");
+                }
+
+                Properties saltProps = new Properties();
+                try (InputStream is = Files.newInputStream(saltPath)) {
+                    saltProps.load(is);
+                    this.salt = saltProps.getProperty("salt");
+                }
+
+                if (username != null && passwordHash != null && salt != null) {
+                    this.initialized = true;
+                    System.out.println("Admin account loaded: " + username);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error loading admin config: " + e.getMessage());
+            this.initialized = false;
+        }
+    }
+
+    private void saveAdminConfig() {
+        try {
+            Files.createDirectories(Paths.get(CONFIG_DIR));
+
+            Properties props = new Properties();
+            props.setProperty("username", username);
+            props.setProperty("passwordHash", passwordHash);
+
+            try (OutputStream os = Files.newOutputStream(Paths.get(ADMIN_FILE))) {
+                props.store(os, "RelacIT Admin Account - DO NOT SHARE");
+            }
+
+            Properties saltProps = new Properties();
+            saltProps.setProperty("salt", salt);
+
+            try (OutputStream os = Files.newOutputStream(Paths.get(SALT_FILE))) {
+                saltProps.store(os, "RelacIT Salt - DO NOT SHARE");
+            }
+
+            Paths.get(ADMIN_FILE).toFile().setReadable(false, false);
+            Paths.get(ADMIN_FILE).toFile().setReadable(true, true);
+            Paths.get(SALT_FILE).toFile().setReadable(false, false);
+            Paths.get(SALT_FILE).toFile().setReadable(true, true);
+
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to save admin config: " + e.getMessage(), e);
+        }
+    }
+
+    private String generateSalt() {
+        SecureRandom random = new SecureRandom();
+        byte[] salt = new byte[16];
+        random.nextBytes(salt);
+        return Base64.getEncoder().encodeToString(salt);
+    }
+
+    private String hashPassword(String password, String salt) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            md.update(salt.getBytes());
+            byte[] hashed = md.digest(password.getBytes());
+            return Base64.getEncoder().encodeToString(hashed);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
+    }
+}
