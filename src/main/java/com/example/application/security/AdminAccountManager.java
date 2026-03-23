@@ -3,6 +3,7 @@ package com.example.application.security;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.nio.file.*;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -26,7 +27,12 @@ public class AdminAccountManager {
     private boolean initialized = false;
 
     public AdminAccountManager() {
+        System.out.println("AdminAccountManager initializing...");
+        System.out.println("Config dir: " + CONFIG_DIR);
+        System.out.println("Admin file: " + ADMIN_FILE);
+        System.out.println("Admin exists: " + Files.exists(Paths.get(ADMIN_FILE)));
         loadAdminConfig();
+        System.out.println("Initialized: " + initialized);
     }
 
     public boolean isAdminCreated() {
