@@ -32,10 +32,6 @@ import com.vaadin.flow.server.PWA;
 import com.vaadin.flow.server.VaadinSession;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -82,227 +78,10 @@ public class DashboardView extends VerticalLayout implements BeforeEnterObserver
 
     @Override
     public void beforeEnter(BeforeEnterEvent event) {
-        // Check if user is logged in
         if (VaadinSession.getCurrent().getAttribute("user") == null) {
             event.forwardTo(LoginView.class);
         }
     }
-
-    private void createLayout() {
-        setSizeFull();
-        setPadding(true);
-        setSpacing(true);
-
-        // Header with logout button
-        H1 title = new H1("RelacIT - Industrial Gateway");
-        title.getStyle()
-            .set("font-size", "24px")
-            .set("margin", "0")
-            .set("color", "#1a365d");
-
-        statusLabel.setText("● Ready");
-        statusLabel.getStyle()
-            .set("color", "#16a34a")
-            .set("font-weight", "bold");
-
-        // User info and logout
-        String username = (String) VaadinSession.getCurrent().getAttribute("user");
-        Span userLabel = new Span("👤 " + username);
-        userLabel.getStyle().set("color", "#64748b");
-
-        Button exportBtn = new Button(new Icon(VaadinIcon.DOWNLOAD), e -> showExportDialog());
-        exportBtn.getElement().setAttribute("title", "Export Configuration");
-        
-        Button importBtn = new Button(new Icon(VaadinIcon.UPLOAD), e -> showImportDialog());
-        importBtn.getElement().setAttribute("title", "Import Configuration");
-
-        Button logoutBtn = new Button("Logout", e -> {
-            VaadinSession.getCurrent().close();
-            UI.getCurrent().navigate(LoginView.class);
-        });
-        logoutBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
-        logoutBtn.getStyle().set("color", "#dc2626");
-
-        HorizontalLayout userActions = new HorizontalLayout(userLabel, exportBtn, importBtn, logoutBtn);
-        userActions.setAlignItems(Alignment.CENTER);
-        userActions.setSpacing(true);
-
-        HorizontalLayout header = new HorizontalLayout(title, statusLabel, userActions);
-        header.setAlignItems(Alignment.CENTER);
-        header.setJustifyContentMode(JustifyContentMode.BETWEEN);
-        header.setWidthFull();
-
-        // Data Sources Section
-        H2 sourcesTitle = new H2("Data Sources");
-        sourcesTitle.getStyle().set("font-size", "18px").set("margin-top", "20px");
-
-        setupModbusGrid();
-        setupS7Grid();
-
-        Button addModbusBtn = new Button("+ Add Modbus Device", e -> showAddModbusDialog());
-        addModbusBtn.setIcon(new Icon(VaadinIcon.PLUS));
-        addModbusBtn.getStyle().set("background", "#2563eb").set("color", "white");
-
-        Button addS7Btn = new Button("+ Add S7 Device", e -> showAddS7Dialog());
-        addS7Btn.setIcon(new Icon(VaadinIcon.PLUS));
-        addS7Btn.getStyle().set("background", "#2563eb").set("color", "white");
-
-        // Loggers
-        H2 loggersTitle = new H2("Data Loggers");
-        loggersTitle.getStyle().set("font-size", "16px").set("color", "#475569").set("margin-top", "20px");
-
-        VerticalLayout loggersInfo = new VerticalLayout();
-        loggersInfo.setSpacing(false);
-        loggersInfo.setPadding(false);
-
-        for (DataLogger logger : loggers) {
-            String loggerName = logger.getClass().getSimpleName();
-            String status = logger.getStatus().name();
-            Span loggerLabel = new Span("● " + loggerName + ": " + status);
-            loggerLabel.getStyle().set("color", 
-                logger.getStatus() == DataLogger.LoggerStatus.LOGGING ? "#16a34a" : 
-                logger.getStatus() == DataLogger.LoggerStatus.READY ? "#f59e0b" : "#94a3b8");
-            loggersInfo.add(loggerLabel);
-        }
-
-        dataStatsLabel.getStyle().set("font-family", "monospace").set("color", "#64748b");
-
-        // Assemble
-        add(header, sourcesTitle, modbusGrid, addModbusBtn,
-            s7Grid, addS7Btn, loggersTitle, loggersInfo, dataStatsLabel);
-
-        refreshModbusGrid();
-        refreshS7Grid();
-    }
-
-    private void setupModbusGrid() {
-        modbusGrid.removeAllColumns();
-        modbusGrid.addColumn(ModbusUnit::getDisplayName)
-            .setHeader("Name")
-            .setSortable(true);
-        modbusGrid.addColumn(u -> u.getHost() + ":" + u.getPort())
-            .setHeader("Address");
-        modbusGrid.addColumn(u -> u.getStatus().name())
-            .setHeader("Status")
-            .setSortable(true);
-        modbusGrid.addColumn(new ComponentRenderer<>(unit -> {
-            Button connectBtn = new Button(unit.getStatus() == ModbusUnit.Status.CONNECTED ? "Disconnect" : "Connect");
-            connectBtn.addClickListener(e -> toggleModbusConnection(unit));
-            
-            Button configBtn = new Button(new Icon(VaadinIcon.COG), e -> showModbusConfig(unit));
-            configBtn.getElement().setAttribute("title", "Configure Polling");
-            
-            Button deleteBtn = new Button(new Icon(VaadinIcon.TRASH), e -> {
-                modbusService.removeUnit(unit.getId());
-                refreshModbusGrid();
-            });
-            deleteBtn.getElement().setAttribute("title", "Delete");
-            deleteBtn.getStyle().set("color", "#dc2626");
-            
-            return new HorizontalLayout(connectBtn, configBtn, deleteBtn);
-        })).setHeader("Actions");
-
-        modbusGrid.setWidthFull();
-        modbusGrid.setHeight("200px");
-    }
-
-    private void setupS7Grid() {
-        s7Grid.removeAllColumns();
-        s7Grid.addColumn(S7Unit::getDisplayName)
-            .setHeader("Name")
-            .setSortable(true);
-        s7Grid.addColumn(u -> u.getHost() + " (R" + u.getRack() + "/S" + u.getSlot() + ")")
-            .setHeader("Address");
-        s7Grid.addColumn(u -> u.getStatus().name())
-            .setHeader("Status")
-            .setSortable(true);
-        s7Grid.addColumn(new ComponentRenderer<>(unit -> {
-            Button connectBtn = new Button(unit.getStatus() == S7Unit.Status.CONNECTED ? "Disconnect" : "Connect");
-            connectBtn.addClickListener(e -> toggleS7Connection(unit));
-            
-            Button configBtn = new Button(new Icon(VaadinIcon.COG), e -> showS7Config(unit));
-            configBtn.getElement().setAttribute("title", "Configure Polling");
-            
-            Button deleteBtn = new Button(new Icon(VaadinIcon.TRASH), e -> {
-                s7Service.removeUnit(unit.getId());
-                refreshS7Grid();
-            });
-            deleteBtn.getElement().setAttribute("title", "Delete");
-            deleteBtn.getStyle().set("color", "#dc2626");
-            
-            return new HorizontalLayout(connectBtn, configBtn, deleteBtn);
-        })).setHeader("Actions");
-
-        s7Grid.setWidthFull();
-        s7Grid.setHeight("200px");
-    }
-
-    private void showExportDialog() {
-        Dialog dialog = new Dialog();
-        dialog.setHeaderTitle("📤 Export Configuration");
-        dialog.setWidth("500px");
-
-        Paragraph info = new Paragraph("Copy this configuration to backup your admin account. " +
-            "Store it safely - you can use it to restore access after reinstalling.");
-        info.getStyle().set("color", "#64748b");
-
-        try {
-            String config = adminManager.exportConfig();
-            TextArea configArea = new TextArea("Configuration");
-            configArea.setValue(config);
-            configArea.setWidthFull();
-            configArea.setHeight("200px");
-            configArea.setReadOnly(true);
-
-            Button copyBtn = new Button("Copy to Clipboard", e -> {
-                UI.getCurrent().getPage().executeJs("navigator.clipboard.writeText($0)", config);
-                Notification.show("Copied to clipboard!");
-            });
-
-            Button closeBtn = new Button("Close", e -> dialog.close());
-
-            dialog.add(new VerticalLayout(info, configArea, new HorizontalLayout(copyBtn, closeBtn)));
-        } catch (Exception e) {
-            dialog.add(new Paragraph("Error: " + e.getMessage()));
-        }
-
-        dialog.open();
-    }
-
-    private void showImportDialog() {
-        Dialog dialog = new Dialog();
-        dialog.setHeaderTitle("📥 Import Configuration");
-        dialog.setWidth("500px");
-
-        Paragraph warning = new Paragraph("⚠️ This will OVERWRITE the current admin account!");
-        warning.getStyle().set("color", "#dc2626");
-
-        TextArea configArea = new TextArea("Paste Configuration");
-        configArea.setWidthFull();
-        configArea.setHeight("200px");
-        configArea.setPlaceholder("Paste your backup configuration here...");
-
-        Button importBtn = new Button("Import", e -> {
-            try {
-                adminManager.importConfig(configArea.getValue());
-                Notification.show("Configuration imported! Please login again.");
-                VaadinSession.getCurrent().close();
-                UI.getCurrent().navigate(LoginView.class);
-                dialog.close();
-            } catch (Exception ex) {
-                Notification.show("Import failed: " + ex.getMessage(), 5000, Notification.Position.MIDDLE);
-            }
-        });
-        importBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-
-        Button cancelBtn = new Button("Cancel", e -> dialog.close());
-
-        dialog.add(new VerticalLayout(warning, configArea, new HorizontalLayout(importBtn, cancelBtn)));
-        dialog.open();
-    }
-
-    // ... existing methods (toggleModbusConnection, toggleS7Connection, showAddModbusDialog, etc.) ...
-    // These would be the same as before, just add @Override to onAttach
 
     @Override
     protected void onAttach(AttachEvent attachEvent) {
@@ -323,6 +102,170 @@ public class DashboardView extends VerticalLayout implements BeforeEnterObserver
     @Override
     protected void onDetach() {
         scheduler.shutdown();
+    }
+
+    private void createLayout() {
+        setSizeFull();
+        setPadding(true);
+        setSpacing(true);
+
+        H1 title = new H1("RelacIT - Industrial Gateway");
+        title.getStyle().set("font-size", "24px").set("margin", "0").set("color", "#1a365d");
+
+        statusLabel.setText("● Ready");
+        statusLabel.getStyle().set("color", "#16a34a").set("font-weight", "bold");
+
+        String username = (String) VaadinSession.getCurrent().getAttribute("user");
+        Span userLabel = new Span("👤 " + username);
+        userLabel.getStyle().set("color", "#64748b");
+
+        Button exportBtn = new Button(new Icon(VaadinIcon.DOWNLOAD), e -> showExportDialog());
+        exportBtn.getElement().setAttribute("title", "Export Configuration");
+        
+        Button importBtn = new Button(new Icon(VaadinIcon.UPLOAD), e -> showImportDialog());
+        importBtn.getElement().setAttribute("title", "Import Configuration");
+
+        Button logoutBtn = new Button("Logout", e -> {
+            VaadinSession.getCurrent().close();
+            UI.getCurrent().navigate(LoginView.class);
+        });
+        logoutBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        logoutBtn.getStyle().set("color", "#dc2626");
+
+        HorizontalLayout userActions = new HorizontalLayout(userLabel, exportBtn, importBtn, logoutBtn);
+        userActions.setAlignItems(Alignment.CENTER);
+
+        HorizontalLayout header = new HorizontalLayout(title, statusLabel, userActions);
+        header.setAlignItems(Alignment.CENTER);
+        header.setJustifyContentMode(JustifyContentMode.BETWEEN);
+        header.setWidthFull();
+
+        setupModbusGrid();
+        setupS7Grid();
+
+        Button addModbusBtn = new Button("+ Add Modbus Device", e -> showAddModbusDialog());
+        addModbusBtn.setIcon(new Icon(VaadinIcon.PLUS));
+        addModbusBtn.getStyle().set("background", "#2563eb").set("color", "white");
+
+        Button addS7Btn = new Button("+ Add S7 Device", e -> showAddS7Dialog());
+        addS7Btn.setIcon(new Icon(VaadinIcon.PLUS));
+        addS7Btn.getStyle().set("background", "#2563eb").set("color", "white");
+
+        H2 loggersTitle = new H2("Data Loggers");
+        loggersTitle.getStyle().set("font-size", "16px").set("color", "#475569").set("margin-top", "20px");
+
+        VerticalLayout loggersInfo = new VerticalLayout();
+        loggersInfo.setSpacing(false);
+        loggersInfo.setPadding(false);
+        for (DataLogger logger : loggers) {
+            String loggerName = logger.getClass().getSimpleName();
+            String status = logger.getStatus().name();
+            Span loggerLabel = new Span("● " + loggerName + ": " + status);
+            loggerLabel.getStyle().set("color", 
+                logger.getStatus() == DataLogger.LoggerStatus.LOGGING ? "#16a34a" : 
+                logger.getStatus() == DataLogger.LoggerStatus.READY ? "#f59e0b" : "#94a3b8");
+            loggersInfo.add(loggerLabel);
+        }
+
+        dataStatsLabel.getStyle().set("font-family", "monospace").set("color", "#64748b");
+
+        add(header, loggersTitle, loggersInfo, modbusGrid, addModbusBtn, s7Grid, addS7Btn, dataStatsLabel);
+        refreshModbusGrid();
+        refreshS7Grid();
+    }
+
+    private void setupModbusGrid() {
+        modbusGrid.removeAllColumns();
+        modbusGrid.addColumn(u -> "Modbus@" + u.getHost() + ":" + u.getPort())
+            .setHeader("Name").setSortable(true);
+        modbusGrid.addColumn(u -> u.getHost() + ":" + u.getPort()).setHeader("Address");
+        modbusGrid.addColumn(u -> u.getStatus().name()).setHeader("Status").setSortable(true);
+        modbusGrid.addColumn(new ComponentRenderer<>(unit -> {
+            Button connectBtn = new Button(unit.getStatus() == ModbusUnit.Status.CONNECTED ? "Disconnect" : "Connect");
+            connectBtn.addClickListener(e -> toggleModbusConnection(unit));
+            Button configBtn = new Button(new Icon(VaadinIcon.COG), e -> showModbusConfig(unit));
+            Button deleteBtn = new Button(new Icon(VaadinIcon.TRASH), e -> {
+                modbusService.removeUnit(unit.getId());
+                refreshModbusGrid();
+            });
+            deleteBtn.getStyle().set("color", "#dc2626");
+            return new HorizontalLayout(connectBtn, configBtn, deleteBtn);
+        })).setHeader("Actions");
+        modbusGrid.setWidthFull();
+        modbusGrid.setHeight("200px");
+    }
+
+    private void setupS7Grid() {
+        s7Grid.removeAllColumns();
+        s7Grid.addColumn(u -> "S7@" + u.getHost() + " (R" + u.getRack() + "/S" + u.getSlot() + ")")
+            .setHeader("Name").setSortable(true);
+        s7Grid.addColumn(u -> u.getHost() + " (R" + u.getRack() + "/S" + u.getSlot() + ")").setHeader("Address");
+        s7Grid.addColumn(u -> u.getStatus().name()).setHeader("Status").setSortable(true);
+        s7Grid.addColumn(new ComponentRenderer<>(unit -> {
+            Button connectBtn = new Button(unit.getStatus() == S7Unit.Status.CONNECTED ? "Disconnect" : "Connect");
+            connectBtn.addClickListener(e -> toggleS7Connection(unit));
+            Button configBtn = new Button(new Icon(VaadinIcon.COG), e -> showS7Config(unit));
+            Button deleteBtn = new Button(new Icon(VaadinIcon.TRASH), e -> {
+                s7Service.removeUnit(unit.getId());
+                refreshS7Grid();
+            });
+            deleteBtn.getStyle().set("color", "#dc2626");
+            return new HorizontalLayout(connectBtn, configBtn, deleteBtn);
+        })).setHeader("Actions");
+        s7Grid.setWidthFull();
+        s7Grid.setHeight("200px");
+    }
+
+    private void showExportDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("📤 Export Configuration");
+        dialog.setWidth("500px");
+        Paragraph info = new Paragraph("Copy this configuration to backup your admin account.");
+        info.getStyle().set("color", "#64748b");
+        try {
+            String config = adminManager.exportConfig();
+            TextArea configArea = new TextArea("Configuration");
+            configArea.setValue(config);
+            configArea.setWidthFull();
+            configArea.setHeight("200px");
+            configArea.setReadOnly(true);
+            Button copyBtn = new Button("Copy to Clipboard", e -> {
+                UI.getCurrent().getPage().executeJs("navigator.clipboard.writeText($0)", config);
+                Notification.show("Copied to clipboard!");
+            });
+            Button closeBtn = new Button("Close", e -> dialog.close());
+            dialog.add(new VerticalLayout(info, configArea, new HorizontalLayout(copyBtn, closeBtn)));
+        } catch (Exception e) {
+            dialog.add(new Paragraph("Error: " + e.getMessage()));
+        }
+        dialog.open();
+    }
+
+    private void showImportDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("📥 Import Configuration");
+        dialog.setWidth("500px");
+        Paragraph warning = new Paragraph("⚠️ This will OVERWRITE the current admin account!");
+        warning.getStyle().set("color", "#dc2626");
+        TextArea configArea = new TextArea("Paste Configuration");
+        configArea.setWidthFull();
+        configArea.setHeight("200px");
+        configArea.setPlaceholder("Paste your backup configuration here...");
+        Button importBtn = new Button("Import", e -> {
+            try {
+                adminManager.importConfig(configArea.getValue());
+                Notification.show("Configuration imported! Please login again.");
+                VaadinSession.getCurrent().close();
+                UI.getCurrent().navigate(LoginView.class);
+                dialog.close();
+            } catch (Exception ex) {
+                Notification.show("Import failed: " + ex.getMessage(), 5000, Notification.Position.MIDDLE);
+            }
+        });
+        importBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        Button cancelBtn = new Button("Cancel", e -> dialog.close());
+        dialog.add(new VerticalLayout(warning, configArea, new HorizontalLayout(importBtn, cancelBtn)));
+        dialog.open();
     }
 
     private void toggleModbusConnection(ModbusUnit unit) {
@@ -350,88 +293,57 @@ public class DashboardView extends VerticalLayout implements BeforeEnterObserver
     private void showAddModbusDialog() {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Add Modbus Device");
-
         TextField hostField = new TextField("Host IP");
-        hostField.setPlaceholder("192.168.1.10");
         hostField.setValue("192.168.1.10");
-
         IntegerField portField = new IntegerField("Port");
         portField.setValue(502);
-
         IntegerField unitIdField = new IntegerField("Unit ID");
         unitIdField.setValue(1);
-
         Button addBtn = new Button("Add", e -> {
-            ModbusUnit unit = modbusService.addUnit(
-                hostField.getValue(),
-                portField.getValue(),
-                unitIdField.getValue()
-            );
+            ModbusUnit unit = modbusService.addUnit(hostField.getValue(), portField.getValue(), unitIdField.getValue());
             refreshModbusGrid();
             dialog.close();
-            Notification.show("Added " + unit.getDisplayName());
+            Notification.show("Added Modbus@" + unit.getHost() + ":" + unit.getPort());
         });
-
         Button cancelBtn = new Button("Cancel", e -> dialog.close());
-
-        dialog.add(new VerticalLayout(hostField, portField, unitIdField, 
-            new HorizontalLayout(addBtn, cancelBtn)));
+        dialog.add(new VerticalLayout(hostField, portField, unitIdField, new HorizontalLayout(addBtn, cancelBtn)));
         dialog.open();
     }
 
     private void showAddS7Dialog() {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Add Siemens S7 Device");
-
         TextField hostField = new TextField("Host IP");
-        hostField.setPlaceholder("192.168.1.20");
         hostField.setValue("192.168.1.20");
-
         IntegerField rackField = new IntegerField("Rack");
         rackField.setValue(0);
-
         IntegerField slotField = new IntegerField("Slot");
         slotField.setValue(1);
-
         Button addBtn = new Button("Add", e -> {
-            S7Unit unit = s7Service.addUnit(
-                hostField.getValue(),
-                rackField.getValue(),
-                slotField.getValue()
-            );
+            S7Unit unit = s7Service.addUnit(hostField.getValue(), rackField.getValue(), slotField.getValue());
             refreshS7Grid();
             dialog.close();
-            Notification.show("Added " + unit.getDisplayName());
+            Notification.show("Added S7@" + unit.getHost());
         });
-
         Button cancelBtn = new Button("Cancel", e -> dialog.close());
-
-        dialog.add(new VerticalLayout(hostField, rackField, slotField,
-            new HorizontalLayout(addBtn, cancelBtn)));
+        dialog.add(new VerticalLayout(hostField, rackField, slotField, new HorizontalLayout(addBtn, cancelBtn)));
         dialog.open();
     }
 
     private void showModbusConfig(ModbusUnit unit) {
         Dialog dialog = new Dialog();
-        dialog.setHeaderTitle("Configure Polling: " + unit.getDisplayName());
+        dialog.setHeaderTitle("Configure Polling: Modbus@" + unit.getHost());
         dialog.setWidth("400px");
-
         TextField registersField = new TextField("Registers (comma-separated)");
         registersField.setPlaceholder("0,1,2,3,4");
-
         IntegerField intervalField = new IntegerField("Poll Interval (ms)");
         intervalField.setValue(1000);
-
         Button startBtn = new Button("Start Polling", e -> {
             try {
                 List<Integer> regs = Arrays.stream(registersField.getValue().split(","))
-                    .map(String::trim)
-                    .map(Integer::parseInt)
-                    .toList();
-                
+                    .map(String::trim).map(Integer::parseInt).toList();
                 modbusPolling.configurePolling(unit.getId(), regs, intervalField.getValue());
                 modbusPolling.startPolling(unit.getId());
-                
                 dialog.close();
                 Notification.show("Polling started");
                 updateStats();
@@ -439,65 +351,42 @@ public class DashboardView extends VerticalLayout implements BeforeEnterObserver
                 Notification.show("Error: " + ex.getMessage());
             }
         });
-
         Button stopBtn = new Button("Stop Polling", e -> {
             modbusPolling.stopPolling(unit.getId());
             dialog.close();
             Notification.show("Polling stopped");
         });
-
         Button closeBtn = new Button("Close", e -> dialog.close());
-
-        dialog.add(new VerticalLayout(
-            new Span("Configure which registers to poll:"),
-            registersField,
-            intervalField,
-            new HorizontalLayout(startBtn, stopBtn, closeBtn)
-        ));
+        dialog.add(new VerticalLayout(registersField, intervalField, new HorizontalLayout(startBtn, stopBtn, closeBtn)));
         dialog.open();
     }
 
     private void showS7Config(S7Unit unit) {
         Dialog dialog = new Dialog();
-        dialog.setHeaderTitle("Configure S7 Polling: " + unit.getDisplayName());
+        dialog.setHeaderTitle("Configure S7 Polling: " + unit.getHost());
         dialog.setWidth("400px");
-
         ComboBox<String> areaCombo = new ComboBox<>("Area");
         areaCombo.setItems("DB", "M", "I", "Q");
         areaCombo.setValue("DB");
-
         IntegerField dbField = new IntegerField("DB Number");
         dbField.setValue(1);
-        dbField.setHelperText("Only for DB area");
-
         IntegerField startField = new IntegerField("Start Byte");
         startField.setValue(0);
-
         IntegerField lengthField = new IntegerField("Length (bytes)");
         lengthField.setValue(10);
-
         IntegerField intervalField = new IntegerField("Poll Interval (ms)");
         intervalField.setValue(1000);
-
         Button startBtn = new Button("Start Polling", e -> {
             try {
-                byte area = switch (areaCombo.getValue()) {
-                    case "DB" -> S7Client.S7AREA_DB;
-                    case "M" -> S7Client.S7AREA_MK;
-                    case "I" -> S7Client.S7AREA_PE;
-                    case "Q" -> S7Client.S7AREA_PA;
-                    default -> S7Client.S7AREA_DB;
-                };
-
+                byte area;
+                if ("DB".equals(areaCombo.getValue())) area = S7Client.S7AREA_DB;
+                else if ("M".equals(areaCombo.getValue())) area = S7Client.S7AREA_MK;
+                else if ("I".equals(areaCombo.getValue())) area = S7Client.S7AREA_PE;
+                else area = S7Client.S7AREA_PA;
                 int dbNum = "DB".equals(areaCombo.getValue()) ? dbField.getValue() : 0;
-
-                S7PollingService.DataAddress addr = new S7PollingService.DataAddress(
-                    area, dbNum, startField.getValue(), lengthField.getValue()
-                );
-
+                S7PollingService.DataAddress addr = new S7PollingService.DataAddress(area, dbNum, startField.getValue(), lengthField.getValue());
                 s7Polling.configurePolling(unit.getId(), List.of(addr), intervalField.getValue());
                 s7Polling.startPolling(unit.getId());
-
                 dialog.close();
                 Notification.show("S7 polling started");
                 updateStats();
@@ -505,19 +394,13 @@ public class DashboardView extends VerticalLayout implements BeforeEnterObserver
                 Notification.show("Error: " + ex.getMessage());
             }
         });
-
         Button stopBtn = new Button("Stop Polling", e -> {
             s7Polling.stopPolling(unit.getId());
             dialog.close();
             Notification.show("Polling stopped");
         });
-
         Button closeBtn = new Button("Close", e -> dialog.close());
-
-        dialog.add(new VerticalLayout(
-            areaCombo, dbField, startField, lengthField, intervalField,
-            new HorizontalLayout(startBtn, stopBtn, closeBtn)
-        ));
+        dialog.add(new VerticalLayout(areaCombo, dbField, startField, lengthField, intervalField, new HorizontalLayout(startBtn, stopBtn, closeBtn)));
         dialog.open();
     }
 

@@ -29,12 +29,12 @@ public class S7Client implements AutoCloseable {
     private static final byte PDU_TYPE_PUSH = 0x00;
     
     // S7 Area types
-    public static final byte S7AREA_PE = 0x81;  // Process inputs
-    public static final byte S7AREA_PA = 0x82;  // Process outputs
-    public static final byte S7AREA_MK = 0x83;  // Merkers (M memory)
-    public static final byte S7AREA_DB = 0x84;  // Data blocks
-    public static final byte S7AREA_CT = 0x1C;  // Counters
-    public static final byte S7AREA_TM = 0x1D;  // Timers
+    public static final byte S7AREA_PE = (byte) 0x81;  // Process inputs
+    public static final byte S7AREA_PA = (byte) 0x82;  // Process outputs
+    public static final byte S7AREA_MK = (byte) 0x83;  // Merkers (M memory)
+    public static final byte S7AREA_DB = (byte) 0x84;  // Data blocks
+    public static final byte S7AREA_CT = (byte) 0x1C;  // Counters
+    public static final byte S7AREA_TM = (byte) 0x1D;  // Timers
     
     // S7 Word lengths
     public static final byte S7WL_BIT = 0x01;
@@ -263,12 +263,12 @@ public class S7Client implements AutoCloseable {
         // Send
         ByteBuffer tpdu = ByteBuffer.allocate(request.limit() + 7);
         tpdu.put((byte) 0x03);
-        tpku.put((byte) 0x00);
-        tpku.putShort((short) (request.limit() + 7));
-        tpku.put((byte) 0x02);  // COTP length
-        tpku.put((byte) 0xF0);  // COTP type
-        tpku.put((byte) 0x80);  // EOT
-        tpku.put(request.array());
+        tpdu.put((byte) 0x00);
+        tpdu.putShort((short) (request.limit() + 7));
+        tpdu.put((byte) 0x02);  // COTP length
+        tpdu.put((byte) 0xF0);  // COTP type
+        tpdu.put((byte) 0x80);  // EOT
+        tpdu.put(request.array());
         
         out.write(tpdu.array());
         out.flush();
@@ -353,13 +353,13 @@ public class S7Client implements AutoCloseable {
         
         // Send (with TPKT/COTP wrapper)
         ByteBuffer tpdu = ByteBuffer.allocate(request.limit() + 7);
-        tpku.put((byte) 0x03);
-        tpku.put((byte) 0x00);
-        tpku.putShort((short) (request.limit() + 7));
-        tpku.put((byte) 0x02);
-        tpku.put((byte) 0xF0);
-        tpku.put((byte) 0x80);
-        tpku.put(request.array());
+        tpdu.put((byte) 0x03);
+        tpdu.put((byte) 0x00);
+        tpdu.putShort((short) (request.limit() + 7));
+        tpdu.put((byte) 0x02);
+        tpdu.put((byte) 0xF0);
+        tpdu.put((byte) 0x80);
+        tpdu.put(request.array());
         
         out.write(tpdu.array());
         out.flush();

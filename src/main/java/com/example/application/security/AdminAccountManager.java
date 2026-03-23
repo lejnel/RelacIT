@@ -189,8 +189,8 @@ public class AdminAccountManager {
             }
             
             // Set file permissions (readable only by owner)
-            adminFile.toFile().setReadable(false, false);
-            adminFile.toFile().setReadable(true, true);
+            Paths.get(ADMIN_FILE).toFile().setReadable(false, false);
+            Paths.get(ADMIN_FILE).toFile().setReadable(true, true);
             Paths.get(SALT_FILE).toFile().setReadable(false, false);
             Paths.get(SALT_FILE).toFile().setReadable(true, true);
             

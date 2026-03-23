@@ -176,13 +176,18 @@ public class S7PollingService {
         
         @Override
         public String toString() {
-            String areaName = switch (area) {
-                case S7Client.S7AREA_DB -> "DB" + dbNumber;
-                case S7Client.S7AREA_MK -> "M";
-                case S7Client.S7AREA_PE -> "I";
-                case S7Client.S7AREA_PA -> "Q";
-                default -> "?";
-            };
+            String areaName;
+            if (area == S7Client.S7AREA_DB) {
+                areaName = "DB" + dbNumber;
+            } else if (area == S7Client.S7AREA_MK) {
+                areaName = "M";
+            } else if (area == S7Client.S7AREA_PE) {
+                areaName = "I";
+            } else if (area == S7Client.S7AREA_PA) {
+                areaName = "Q";
+            } else {
+                areaName = "?";
+            }
             return areaName + ".DBB" + startByte + " (" + length + " bytes)";
         }
     }
